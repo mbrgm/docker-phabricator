@@ -12,12 +12,6 @@ PHABRICATOR_NGINX_CONFIG_PATH=/etc/nginx/sites-available/phabricator
 # Configuration variables
 ##############################
 
-#-----------------
-# Phabricator
-#-----------------
-
-PHABRICATOR_HOST=${PHABRICATOR_HOST:-localhost}
-
 #-----------
 # MySQL
 #-----------
