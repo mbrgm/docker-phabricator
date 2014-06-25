@@ -1,0 +1,130 @@
+#!/bin/bash
+set -e
+
+################
+# Constants
+################
+
+PHABRICATOR_NGINX_CONFIG_PATH=/etc/nginx/sites-available/phabricator
+
+
+##############################
+# Configuration variables
+##############################
+
+#-----------------
+# Phabricator
+#-----------------
+
+PHABRICATOR_HOST=${PHABRICATOR_HOST:-localhost}
+
+#-----------
+# MySQL
+#-----------
+
+# Look for environment variables first
+DB_HOST=${DB_HOST:-}
+DB_PORT=${DB_PORT:-}
+DB_USER=${DB_USER:-root}
+DB_PASS=${DB_PASS:-}
+
+# Use linked mysql container if present
+if [ -n "${MYSQL_PORT_3306_TCP_ADDR}" ]; then
+    DB_HOST=${DB_HOST:-${MYSQL_PORT_3306_TCP_ADDR}}
+    DB_PORT=${DB_PORT:-${MYSQL_PORT_3306_TCP_PORT}}
+    DB_PASS=${DB_PASS:-${MYSQL_ENV_MYSQL_ROOT_PASSWORD}}
+fi
+
+if [ -z "$DB_HOST" ]; then
+    echo "ERROR! You must supply a URL to a MySQL server or link a MySQL " \
+         "container." 1>&2
+    exit -1
+fi
+
+if [ -z "$DB_PASS" ]; then
+    echo "ERROR! You must supply a password for database user '${DB_USER}'." \
+        1>&2
+    exit -1
+fi
+
+# Fallback to default mysql port
+DB_PORT=${DB_PORT:-3306}
+
+
+####################
+# Configuration
+####################
+
+#-----------
+# nginx
+#-----------
+
+# Copy configuration template
+cp /app/config/nginx/phabricator $PHABRICATOR_NGINX_CONFIG_PATH
+
+# Disable default site
+rm -f /etc/nginx/sites-enabled/default
+
+# Enable phabricator
+ln -s /etc/nginx/sites-available/phabricator \
+    /etc/nginx/sites-enabled/phabricator
+
+#-----------------
+# Phabricator
+#-----------------
+
+# Set path to config binary
+PHABRICATOR_CONFIG_CMD=${PHABRICATOR_DIR}/bin/config
+
+# Set mysql connection details
+$PHABRICATOR_CONFIG_CMD set mysql.host $DB_HOST
+$PHABRICATOR_CONFIG_CMD set mysql.port $DB_PORT
+$PHABRICATOR_CONFIG_CMD set mysql.user $DB_USER
+$PHABRICATOR_CONFIG_CMD set mysql.pass $DB_PASS
+
+
+##################
+# CLI Methods
+##################
+
+appStart () {
+    echo "Starting php5-fpm..."
+    service php5-fpm start
+
+    echo "Starting nginx..."
+    service nginx start
+
+    tail -f /var/log/nginx/access.log -f /var/log/nginx/error.log
+}
+
+appSetup () {
+    echo "Setting up database..."
+    $PHABRICATOR_DIR/bin/storage upgrade --force
+}
+
+
+########################
+# Application start
+########################
+
+case "$1" in
+    app:start)
+        appStart
+        ;;
+    app:setup)
+        appSetup
+        ;;
+    *)
+        if [ -x $1 ]; then
+            $1
+        else
+            prog=$(which $1)
+            if [ -n "${prog}" ] ; then
+                shift 1
+                $prog $@
+            fi
+        fi
+        ;;
+esac
+
+exit 0
