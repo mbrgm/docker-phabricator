@@ -1,0 +1,16 @@
+dbdata:
+  image: busybox
+  volumes:
+    - /var/lib/mysql
+
+db:
+  image: mysql
+  environment:
+    MYSQL_ROOT_PASSWORD: secret_password
+
+web:
+  build: .
+  links:
+    - db:mysql
+  ports:
+    - 80:80
