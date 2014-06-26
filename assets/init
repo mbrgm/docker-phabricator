@@ -1,12 +1,6 @@
 #!/bin/bash
 set -e
 
-################
-# Constants
-################
-
-PHABRICATOR_NGINX_CONFIG_PATH=/etc/nginx/sites-available/phabricator
-
 
 ##############################
 # Configuration variables
@@ -49,20 +43,6 @@ DB_PORT=${DB_PORT:-3306}
 # Configuration
 ####################
 
-#-----------
-# nginx
-#-----------
-
-# Copy configuration template
-cp /app/config/nginx/phabricator $PHABRICATOR_NGINX_CONFIG_PATH
-
-# Disable default site
-rm -f /etc/nginx/sites-enabled/default
-
-# Enable phabricator
-ln -s /etc/nginx/sites-available/phabricator \
-    /etc/nginx/sites-enabled/phabricator
-
 #-----------------
 # Phabricator
 #-----------------
@@ -70,11 +50,35 @@ ln -s /etc/nginx/sites-available/phabricator \
 # Set path to config binary
 PHABRICATOR_CONFIG_CMD=${PHABRICATOR_DIR}/bin/config
 
+
+
 # Set mysql connection details
+mysql_connection_status=-1
+remaining_seconds=30
+while [[ $mysql_connection_status -ne 0  && $remaining_seconds -gt 0 ]]; do
+    echo "Waiting for MySQL connection. $remaining_seconds seconds left..."
+    nc -z $DB_HOST $DB_PORT && mysql_connection_status=0 || true
+    remaining_seconds=$(($remaining_seconds - 1))
+    sleep 1;
+done
+echo "MySQL connection established. Continuing setup."
 $PHABRICATOR_CONFIG_CMD set mysql.host $DB_HOST
 $PHABRICATOR_CONFIG_CMD set mysql.port $DB_PORT
 $PHABRICATOR_CONFIG_CMD set mysql.user $DB_USER
 $PHABRICATOR_CONFIG_CMD set mysql.pass $DB_PASS
+
+
+#---------------------
+# First-run setup
+#---------------------
+
+# This needs to run only once after the container has been built/upgraded
+install_script=/app/setup/install
+if [[ -r $install_script ]]; then
+    echo "Running first-run install script..."
+    $install_script
+    rm $install_script
+fi
 
 
 ##################
@@ -91,11 +95,6 @@ appStart () {
     tail -f /var/log/nginx/access.log -f /var/log/nginx/error.log
 }
 
-appSetup () {
-    echo "Setting up database..."
-    $PHABRICATOR_DIR/bin/storage upgrade --force
-}
-
 
 ########################
 # Application start
@@ -104,9 +103,6 @@ appSetup () {
 case "$1" in
     app:start)
         appStart
-        ;;
-    app:setup)
-        appSetup
         ;;
     *)
         if [ -x $1 ]; then

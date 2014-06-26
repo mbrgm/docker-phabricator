@@ -1,0 +1,40 @@
+#!/bin/bash
+set -e
+
+#---------------
+# Constants
+#---------------
+
+PHABRICATOR_NGINX_CONFIG_PATH=/etc/nginx/sites-available/phabricator
+
+
+#---------------------
+# Configure nginx
+#---------------------
+
+# Copy configuration template
+cp /app/config/nginx/phabricator $PHABRICATOR_NGINX_CONFIG_PATH
+
+# Disable default site
+rm -f /etc/nginx/sites-enabled/default
+
+# Enable phabricator
+ln -s /etc/nginx/sites-available/phabricator \
+    /etc/nginx/sites-enabled/phabricator
+
+
+#----------------------
+# Upgrade database
+#----------------------
+
+num_tries_left=5;
+$PHABRICATOR_DIR/bin/storage upgrade --force
+status=$?
+while [[ $status -ne 0 && $num_tries_left -gt 0 ]]; do
+    num_tries_left=$(($num_tries_left - 1))
+    echo "Could not upgrade db. Tries left: $num_tries_left. Waiting for 5
+    seconds..."
+    sleep 5;
+    $PHABRICATOR_DIR/bin/storage upgrade --force
+    status=$?
+done
