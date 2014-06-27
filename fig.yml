@@ -4,7 +4,7 @@ dbdata:
     - /var/lib/mysql
 
 db:
-  image: mysql
+  image: mbrgm/mysql
   environment:
     MYSQL_ROOT_PASSWORD: secret_password
 
